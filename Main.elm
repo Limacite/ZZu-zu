@@ -6,6 +6,9 @@ import File.Select as Select
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
+import Http
+import Json.Decode exposing (..)
+import Json.Encode exposing (..)
 import Task
 import Time
 
@@ -27,14 +30,14 @@ main =
 type alias Model =
     { input : String
     , inputImg : Maybe String
-    , memos : List Memo
+    , postList : List PostContent
     , zone : Time.Zone
     , time : Time.Posix
     , viewPage : Int
     }
 
 
-type alias Memo =
+type alias PostContent =
     { date : String
     , text : String
     , img : String
@@ -61,6 +64,8 @@ type Msg
     | AdjustTimeZone Time.Zone
     | Tick Time.Posix
     | PageSelect Int
+    | GotPosts (Result Http.Error (List PostContent))
+    | Reload
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -95,7 +100,7 @@ update msg model =
                 toDay =
                     String.fromInt (Time.toDay model.zone model.time)
 
-                newMemo =
+                newPostContent =
                     { date = toYear ++ "-" ++ toMonth ++ "-" ++ toDay
                     , text = model.input
                     , img =
@@ -107,7 +112,7 @@ update msg model =
                                 content
                     }
             in
-            ( { model | input = "", inputImg = Nothing, memos = newMemo :: model.memos }
+            ( { model | input = "", inputImg = Nothing, postList = newPostContent :: model.postList }
             , Cmd.none
             )
 
@@ -119,6 +124,29 @@ update msg model =
 
         PageSelect number ->
             ( { model | viewPage = number }, Cmd.none )
+
+        GotPosts result ->
+            case result of
+                Ok postList ->
+                    ( { model | postList = postList }, Cmd.none )
+
+                Err (Http.BadUrl url) ->
+                    ( { model | input = "badurl:" ++ url }, Cmd.none )
+
+                Err (Http.BadStatus int) ->
+                    ( { model | input = "badStatus:" ++ String.fromInt int }, Cmd.none )
+
+                Err (Http.BadBody url) ->
+                    ( { model | input = "badbody:" ++ url }, Cmd.none )
+
+                Err Http.NetworkError ->
+                    ( { model | input = "NetworkError" }, Cmd.none )
+
+                Err Http.Timeout ->
+                    ( { model | input = "Timeout" }, Cmd.none )
+
+        Reload ->
+            ( { model | postList = [] }, getTimeLine )
 
 
 toStringMonth : Time.Month -> String
@@ -181,6 +209,7 @@ view model =
             [ ul [ style "list-style-type" "none", style "width" "100%" ]
                 [ li [ onClick (PageSelect 1) ] [ text "投稿" ]
                 , li [ onClick (PageSelect 2) ] [ text "地図" ]
+                , li [ onClick Reload ] [ text "タイムライン更新" ]
                 ]
             ]
         , div [ style "width" "50%", style "margin" "0 auto", style "float" "left" ]
@@ -192,12 +221,12 @@ view model =
         ]
 
 
-viewMemo : Memo -> Html Msg
-viewMemo memo =
+viewPostContent : PostContent -> Html Msg
+viewPostContent postContent =
     li [ style "border" "solid 1px #000000", style "border-top" "none" ]
-        [ div [] [ text memo.text ]
-        , div [] [ img [ style "height" "150px", src memo.img, hidden (String.length memo.img < 1) ] [] ]
-        , div [ style "text-align" "right" ] [ text memo.date ]
+        [ div [] [ text postContent.text ]
+        , div [] [ img [ style "height" "150px", src postContent.img, hidden (String.length postContent.img < 1) ] [] ]
+        , div [ style "text-align" "right" ] [ text postContent.date ]
         ]
 
 
@@ -205,14 +234,15 @@ timeline : Model -> Html Msg
 timeline model =
     div [ hidden (model.viewPage /= 1) ]
         [ postForm model
-        , ul [ style "list-style-type" "none", style "margin-left" "0px", style "padding-left" "0px", style "border-top" "solid 1px #000000", style "width" "100%", style "height" "400px", style "overflow-y" "scroll", hidden (List.length model.memos < 1) ] (List.map viewMemo model.memos)
+        , ul [ style "list-style-type" "none", style "margin-left" "0px", style "padding-left" "0px", style "border-top" "solid 1px #000000", style "width" "100%", style "height" "400px", style "overflow-y" "scroll", hidden (List.length model.postList < 1) ]
+            (List.map viewPostContent model.postList)
         ]
 
 
 postForm : Model -> Html Msg
 postForm model =
     Html.form [ onSubmit Submit ]
-        [ textarea [ value model.input, onInput Input, style "width" "99%", style "height" "100px", style "resize" "none", style "margin-left" "0px", style "padding" "0px" ] []
+        [ textarea [ Html.Attributes.value model.input, onInput Input, style "width" "99%", style "height" "100px", style "resize" "none", style "margin-left" "0px", style "padding" "0px" ] []
         , br [] []
         , label [ onClick ImgRequested, style "border" "solid 1px #000000" ] [ text "画像を選択" ]
         , div [ hidden (model.inputImg == Nothing) ]
@@ -236,3 +266,30 @@ mapmode model =
         , button [] [ text "検索" ]
         , div [ id "mapArea", style "width" "100%", style "height" "500px", style "border" "solid 1px #000000" ] []
         ]
+
+
+
+-- JSON
+
+
+jsonServerUrl : String
+jsonServerUrl =
+    "http://localhost:3000"
+
+
+getTimeLine : Cmd Msg
+getTimeLine =
+    Http.get { url = jsonServerUrl ++ "/posts", expect = Http.expectJson GotPosts postListDecoder }
+
+
+postListDecoder : Decoder (List PostContent)
+postListDecoder =
+    Json.Decode.list postDecoder
+
+
+postDecoder : Decoder PostContent
+postDecoder =
+    Json.Decode.map3 PostContent
+        (Json.Decode.field "date" Json.Decode.string)
+        (Json.Decode.field "text" Json.Decode.string)
+        (Json.Decode.field "img" Json.Decode.string)
