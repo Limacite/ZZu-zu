@@ -38,7 +38,8 @@ type alias Model =
 
 
 type alias PostContent =
-    { date : String
+    { post_id : String
+    , date : String
     , text : String
     , img : String
     }
@@ -101,7 +102,8 @@ update msg model =
                     String.fromInt (Time.toDay model.zone model.time)
 
                 newPostContent =
-                    { date = toYear ++ "-" ++ toMonth ++ "-" ++ toDay
+                    { post_id = "0000"
+                    , date = toYear ++ "-" ++ toMonth ++ "-" ++ toDay
                     , text = model.input
                     , img =
                         case model.inputImg of
@@ -112,8 +114,8 @@ update msg model =
                                 content
                     }
             in
-            ( { model | input = "", inputImg = Nothing, postList = newPostContent :: model.postList }
-            , Cmd.none
+            ( { model | input = "", inputImg = Nothing }
+            , uploadPost newPostContent
             )
 
         AdjustTimeZone newZone ->
@@ -289,7 +291,31 @@ postListDecoder =
 
 postDecoder : Decoder PostContent
 postDecoder =
-    Json.Decode.map3 PostContent
+    Json.Decode.map4 PostContent
+        (Json.Decode.field "id" Json.Decode.string)
         (Json.Decode.field "date" Json.Decode.string)
         (Json.Decode.field "text" Json.Decode.string)
         (Json.Decode.field "img" Json.Decode.string)
+
+
+uploadPost : PostContent -> Cmd Msg
+uploadPost content =
+    Http.request
+        { method = "POST"
+        , headers = []
+        , url = jsonServerUrl ++ "/posts"
+        , body = Http.jsonBody (jsonEncodePost content)
+        , expect = Http.expectJson GotPosts postListDecoder
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+jsonEncodePost : PostContent -> Json.Encode.Value
+jsonEncodePost v =
+    Json.Encode.object
+        [ ( "id", Json.Encode.string v.post_id )
+        , ( "date", Json.Encode.string v.date )
+        , ( "text", Json.Encode.string v.text )
+        , ( "img", Json.Encode.string v.img )
+        ]
