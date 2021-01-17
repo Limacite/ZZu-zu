@@ -7,8 +7,8 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http
-import Json.Decode exposing (..)
-import Json.Encode exposing (..)
+import Json.Decode as Decode
+import Json.Encode as Encode
 import Task
 import Time
 
@@ -102,7 +102,7 @@ update msg model =
                     String.fromInt (Time.toDay model.zone model.time)
 
                 newPostContent =
-                    { post_id = "0000"
+                    { post_id = String.fromInt (Time.posixToMillis model.time)
                     , date = toYear ++ "-" ++ toMonth ++ "-" ++ toDay
                     , text = model.input
                     , img =
@@ -284,18 +284,18 @@ getTimeLine =
     Http.get { url = jsonServerUrl ++ "/posts", expect = Http.expectJson GotPosts postListDecoder }
 
 
-postListDecoder : Decoder (List PostContent)
+postListDecoder : Decode.Decoder (List PostContent)
 postListDecoder =
-    Json.Decode.list postDecoder
+    Decode.list postDecoder
 
 
-postDecoder : Decoder PostContent
+postDecoder : Decode.Decoder PostContent
 postDecoder =
-    Json.Decode.map4 PostContent
-        (Json.Decode.field "id" Json.Decode.string)
-        (Json.Decode.field "date" Json.Decode.string)
-        (Json.Decode.field "text" Json.Decode.string)
-        (Json.Decode.field "img" Json.Decode.string)
+    Decode.map4 PostContent
+        (Decode.field "id" Decode.string)
+        (Decode.field "date" Decode.string)
+        (Decode.field "text" Decode.string)
+        (Decode.field "img" Decode.string)
 
 
 uploadPost : PostContent -> Cmd Msg
@@ -311,11 +311,11 @@ uploadPost content =
         }
 
 
-jsonEncodePost : PostContent -> Json.Encode.Value
+jsonEncodePost : PostContent -> Encode.Value
 jsonEncodePost v =
-    Json.Encode.object
-        [ ( "id", Json.Encode.string v.post_id )
-        , ( "date", Json.Encode.string v.date )
-        , ( "text", Json.Encode.string v.text )
-        , ( "img", Json.Encode.string v.img )
+    Encode.object
+        [ ( "id", Encode.string v.post_id )
+        , ( "date", Encode.string v.date )
+        , ( "text", Encode.string v.text )
+        , ( "img", Encode.string v.img )
         ]
